@@ -1,0 +1,707 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lagerbestand</title>
+<meta name="description" content="Artikel und Bestände im Lager einpflegen und nachschauen.">
+<meta name="theme-color" content="#ECEFEE" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0F1513" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Lager">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: einspaltige Handy-Liste, oben Kennzahlen und Suche, unten fester Button zum Anlegen. Artikel als Zeilen mit Bestand und Plus/Minus rechts. */
+:root {
+  color-scheme: light;
+  --bg: #ECEFEE;
+  --surface: #FFFFFF;
+  --ink: #17211E;
+  --muted: #55645F;
+  --line: #D1D9D6;
+  --accent: #0E6B5B;
+  --accent-ink: #FFFFFF;
+  --ok: #2F7D4F;
+  --warn: #9A5B00;
+  --warn-bg: #FBEFD5;
+  --crit: #B42318;
+  --crit-bg: #FBE4E1;
+  --shadow: rgba(23, 33, 30, 0.18);
+  --font-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --font-body: "Barlow", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #0F1513;
+    --surface: #18201D;
+    --ink: #E8EFEC;
+    --muted: #9AA9A4;
+    --line: #2B3733;
+    --accent: #3CBFA4;
+    --accent-ink: #05211B;
+    --ok: #5CC58A;
+    --warn: #E8AE45;
+    --warn-bg: #3A2D12;
+    --crit: #F27E72;
+    --crit-bg: #3F1E1B;
+    --shadow: rgba(0, 0, 0, 0.5);
+  }
+}
+
+:root {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 16px/1.4 var(--font-body);
+  padding-block: 0 112px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  -webkit-text-size-adjust: 100%;
+}
+.wrap { max-width: 640px; margin: 0 auto; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* Kopf */
+.head { padding-top: 20px; display: flex; flex-direction: column; gap: 14px; }
+.title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+h1 { margin: 0; font: 700 38px/1 var(--font-display); letter-spacing: 0.02em; text-transform: uppercase; text-wrap: balance; }
+.sync { font-size: 13px; color: var(--muted); }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+.stat { padding: 10px 14px; min-width: 0; }
+.stat + .stat { border-left: 1px solid var(--line); }
+.stat b { display: block; font: 500 26px/1.1 var(--font-mono); font-variant-numeric: tabular-nums; }
+.stat span { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.stat.low b { color: var(--warn); }
+.stat.zero b { color: var(--crit); }
+
+/* Werkzeugleiste */
+.tools { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding: 12px 0 10px; display: flex; flex-direction: column; gap: 10px; }
+.search { width: 100%; min-height: 48px; padding: 0 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; font-size: 16px; }
+.search::placeholder { color: var(--muted); }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { min-height: 40px; padding: 0 14px; border: 1px solid var(--line); background: var(--surface); border-radius: 20px; font-weight: 500; font-size: 15px; }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.chip .n { font-family: var(--font-mono); font-size: 13px; margin-left: 6px; opacity: 0.85; font-variant-numeric: tabular-nums; }
+
+/* Hinweis auf Beispieldaten */
+.demo { display: flex; gap: 10px 14px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 10px 14px; border: 1px dashed var(--muted); border-radius: 6px; font-size: 14px; margin-bottom: 12px; }
+.demo p { margin: 0; min-width: 0; }
+
+/* Liste */
+.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.row { display: flex; align-items: stretch; background: var(--surface); border: 1px solid var(--line); border-left-width: 5px; border-radius: 6px; min-width: 0; }
+.row.s-ok { border-left-color: var(--ok); }
+.row.s-low { border-left-color: var(--warn); }
+.row.s-zero { border-left-color: var(--crit); }
+.main { flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 12px 8px 12px 14px; display: flex; flex-direction: column; gap: 3px; }
+.nr { font: 500 13px/1.2 var(--font-mono); color: var(--muted); overflow-wrap: anywhere; }
+.name { font-weight: 600; font-size: 17px; line-height: 1.25; overflow-wrap: anywhere; }
+.meta { display: flex; gap: 6px 10px; flex-wrap: wrap; align-items: center; font-size: 14px; color: var(--muted); }
+.pill { font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; padding: 1px 8px; border-radius: 10px; }
+.pill.low { background: var(--warn-bg); color: var(--warn); }
+.pill.zero { background: var(--crit-bg); color: var(--crit); }
+.qty { display: flex; align-items: center; gap: 2px; padding: 6px 8px 6px 0; flex: none; }
+.step { width: 44px; height: 44px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); font: 600 24px/1 var(--font-body); display: grid; place-items: center; }
+.step:active { background: var(--line); }
+.count { min-width: 56px; text-align: center; font: 500 22px/1.1 var(--font-mono); font-variant-numeric: tabular-nums; }
+.count small { display: block; font: 400 12px/1.2 var(--font-body); color: var(--muted); }
+
+.empty { text-align: center; padding: 36px 8px; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.empty h2 { margin: 0; font: 700 26px/1.1 var(--font-display); letter-spacing: 0.02em; text-transform: uppercase; color: var(--ink); }
+.empty p { margin: 0; max-width: 34ch; }
+.btnrow { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+
+.foot { margin-top: 22px; display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: var(--muted); }
+.foot p { margin: 0; }
+.foot .btnrow { justify-content: flex-start; }
+
+/* Buttons */
+.btn { min-height: 48px; padding: 0 18px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); font-weight: 600; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.small { min-height: 40px; padding: 0 14px; font-size: 14px; }
+.btn.danger { border-color: var(--crit); color: var(--crit); background: transparent; }
+.btn.danger.armed { background: var(--crit); color: #fff; }
+
+.fab { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 6; min-height: 56px; padding: 0 22px; border-radius: 28px; border: 0; background: var(--accent); color: var(--accent-ink); font: 700 20px/1 var(--font-display); letter-spacing: 0.04em; text-transform: uppercase; box-shadow: 0 6px 18px var(--shadow); display: flex; align-items: center; gap: 8px; }
+.fab svg { width: 20px; height: 20px; }
+
+/* Eingabeblatt */
+.sheet { position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
+.backdrop { position: absolute; inset: 0; background: rgba(8, 14, 12, 0.55); }
+.panel { position: relative; width: 100%; max-width: 640px; max-height: 94%; overflow-y: auto; background: var(--surface); border-radius: 14px 14px 0 0; padding-top: 18px; padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 14px; }
+.panel h2 { margin: 0; font: 700 28px/1.1 var(--font-display); letter-spacing: 0.02em; text-transform: uppercase; }
+.field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.field label { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.field input, .field select { width: 100%; min-height: 48px; padding: 0 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; font-size: 16px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 12px; }
+.hint { margin: -6px 0 0; font-size: 13px; color: var(--muted); }
+.err { margin: 0; padding: 10px 12px; border-radius: 6px; background: var(--crit-bg); color: var(--crit); font-weight: 500; font-size: 14px; }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.actions .btn.primary { flex: 1 1 160px; }
+.danger-row { border-top: 1px solid var(--line); padding-top: 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(88px + env(safe-area-inset-bottom, 0px)); z-index: 30; max-width: calc(100% - 32px); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 6px; font-size: 14px; font-weight: 500; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .panel { animation: up 0.18s ease-out; }
+  @keyframes up { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="head">
+    <div class="title-row">
+      <h1>Lagerbestand</h1>
+      <span class="sync">Nur auf diesem Gerät</span>
+    </div>
+    <div class="stats" id="stats" aria-label="Kennzahlen"></div>
+  </header>
+
+  <div class="tools">
+    <input id="search" class="search" type="search" placeholder="Artikel, Nummer oder Lagerplatz suchen" autocomplete="off" aria-label="Suche">
+    <div class="chips" id="chips" role="group" aria-label="Filter"></div>
+  </div>
+
+  <div id="demo" class="demo" hidden>
+    <p>Im Bestand sind Beispielartikel. Lösche sie, bevor du deine echten Artikel einträgst.</p>
+    <button type="button" class="btn small" id="demo-remove">Beispiele entfernen</button>
+  </div>
+
+  <main>
+    <ul class="list" id="list"></ul>
+    <div id="empty" class="empty" hidden></div>
+  </main>
+
+  <div class="foot" id="foot">
+    <p id="foot-info"></p>
+    <div class="btnrow">
+      <button type="button" class="btn small" id="csv-out">Als CSV sichern</button>
+      <button type="button" class="btn small" id="csv-in-btn">CSV einlesen</button>
+    </div>
+    <input id="csv-in" type="file" accept=".csv,text/csv,text/plain" hidden>
+  </div>
+</div>
+
+<button type="button" class="fab" id="add" aria-label="Neuen Artikel anlegen">
+  <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v14M3 10h14" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" fill="none"/></svg>
+  Artikel
+</button>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="backdrop" data-close></div>
+  <form class="panel" id="form" novalidate aria-labelledby="sheet-title">
+    <h2 id="sheet-title">Neuer Artikel</h2>
+    <div class="field">
+      <label for="f-name">Bezeichnung</label>
+      <input id="f-name" type="text" autocomplete="off" maxlength="120" placeholder="z. B. Versandkarton 40 x 30 x 20">
+    </div>
+    <div class="grid2">
+      <div class="field">
+        <label for="f-nr">Artikelnummer</label>
+        <input id="f-nr" type="text" autocomplete="off" maxlength="40" placeholder="z. B. A-1001">
+      </div>
+      <div class="field">
+        <label for="f-ort">Lagerplatz</label>
+        <input id="f-ort" type="text" autocomplete="off" maxlength="40" placeholder="z. B. Regal 2 / Fach 3">
+      </div>
+    </div>
+    <div class="grid3">
+      <div class="field">
+        <label for="f-bestand">Bestand</label>
+        <input id="f-bestand" type="text" inputmode="decimal" autocomplete="off" value="0">
+      </div>
+      <div class="field">
+        <label for="f-min">Meldebestand</label>
+        <input id="f-min" type="text" inputmode="decimal" autocomplete="off" value="0">
+      </div>
+      <div class="field">
+        <label for="f-einheit">Einheit</label>
+        <select id="f-einheit"></select>
+      </div>
+    </div>
+    <p class="hint">Ab dem Meldebestand wird der Artikel als niedrig markiert. Mit 0 ist die Warnung aus.</p>
+    <p class="err" id="form-error" role="alert" hidden></p>
+    <div class="actions">
+      <button type="submit" class="btn primary">Speichern</button>
+      <button type="button" class="btn" data-close>Abbrechen</button>
+    </div>
+    <div class="danger-row" id="danger-row" hidden>
+      <button type="button" class="btn danger small" id="del">Artikel löschen</button>
+      <span class="hint" id="del-hint" style="margin:0" hidden>Zum Bestätigen noch einmal tippen.</span>
+    </div>
+  </form>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+(function () {
+  var UNITS = ["Stk", "Karton", "Palette", "Rolle", "Paket", "kg", "m", "l"];
+  var LS_KEY = "lager-artikel-v1";
+  var DEMO = [
+    { nr: "V-4030", name: "Versandkarton 40 x 30 x 20", ort: "Regal 1 / Fach 1", bestand: 140, min: 50, einheit: "Stk" },
+    { nr: "V-6040", name: "Versandkarton 60 x 40 x 40", ort: "Regal 1 / Fach 2", bestand: 18, min: 30, einheit: "Stk" },
+    { nr: "F-0500", name: "Stretchfolie 500 mm", ort: "Regal 2 / Fach 1", bestand: 0, min: 6, einheit: "Rolle" },
+    { nr: "K-0050", name: "Klebeband braun 50 mm", ort: "Regal 2 / Fach 2", bestand: 36, min: 24, einheit: "Rolle" },
+    { nr: "E-1015", name: "Etiketten 100 x 150 mm", ort: "Regal 3 / Fach 1", bestand: 12, min: 10, einheit: "Rolle" },
+    { nr: "P-EPAL", name: "EPAL-Palette 1200 x 800", ort: "Außenlager", bestand: 22, min: 10, einheit: "Stk" }
+  ];
+
+  var $ = function (s) { return document.querySelector(s); };
+  var items = [];
+  var storageOk = true;
+  var filter = "all", query = "", editingId = null, armed = false, toastTimer = null;
+  var fmt = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 });
+
+  function h(tag, attrs, kids) {
+    var el = document.createElement(tag);
+    if (attrs) for (var k in attrs) {
+      if (k === "class") el.className = attrs[k];
+      else if (k === "text") el.textContent = attrs[k];
+      else el.setAttribute(k, attrs[k]);
+    }
+    (kids || []).forEach(function (c) { if (c) el.appendChild(c); });
+    return el;
+  }
+  function num(v) {
+    var n = Number(String(v).trim().replace(",", "."));
+    return isFinite(n) ? n : NaN;
+  }
+  function toast(msg) {
+    var t = $("#toast");
+    t.textContent = msg; t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.hidden = true; }, 3200);
+  }
+
+  /* ---------- Speicher auf dem Gerät ---------- */
+  function loadLocal() {
+    try {
+      var raw = localStorage.getItem(LS_KEY);
+      var data = raw ? JSON.parse(raw) : [];
+      items = Array.isArray(data) ? data : [];
+    } catch (e) {
+      items = [];
+    }
+    try {
+      localStorage.setItem("lager-test", "1");
+      localStorage.removeItem("lager-test");
+    } catch (e) {
+      storageOk = false;
+    }
+  }
+  function saveLocal() {
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify(items));
+    } catch (e) {
+      storageOk = false;
+      toast("Speichern ist in diesem Browser nicht möglich.");
+      render();
+    }
+  }
+  function newId() {
+    return "a" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  }
+  function byId(id) {
+    return items.find(function (x) { return x.id === id; });
+  }
+
+  /* ---------- Bestand ändern ---------- */
+  function bump(id, delta) {
+    var it = byId(id);
+    if (!it) return;
+    it.bestand = Math.max(0, Math.round((it.bestand + delta) * 100) / 100);
+    it.geaendert = Date.now();
+    saveLocal();
+    render();
+  }
+
+  /* ---------- Anzeige ---------- */
+  function status(it) {
+    if (it.bestand <= 0) return "zero";
+    if (it.min > 0 && it.bestand <= it.min) return "low";
+    return "ok";
+  }
+  function sorted() {
+    return items.slice().sort(function (a, b) { return String(a.name || "").localeCompare(String(b.name || ""), "de"); });
+  }
+  function matches(it) {
+    var s = status(it);
+    if (filter === "low" && s !== "low") return false;
+    if (filter === "zero" && s !== "zero") return false;
+    if (!query) return true;
+    var hay = [it.name, it.nr, it.ort].join(" ").toLowerCase();
+    return query.toLowerCase().split(/\s+/).every(function (w) { return hay.indexOf(w) >= 0; });
+  }
+
+  function render() {
+    var low = 0, zero = 0, hasDemo = false;
+    items.forEach(function (it) {
+      var s = status(it);
+      if (s === "low") low++;
+      if (s === "zero") zero++;
+      if (it.demo) hasDemo = true;
+    });
+
+    var stats = $("#stats");
+    stats.textContent = "";
+    [["", items.length, "Artikel"], ["low", low, "Niedrig"], ["zero", zero, "Leer"]].forEach(function (r) {
+      stats.appendChild(h("div", { class: "stat " + r[0] }, [h("b", { text: String(r[1]) }), h("span", { text: r[2] })]));
+    });
+
+    var chips = $("#chips");
+    chips.textContent = "";
+    [["all", "Alle", items.length], ["low", "Niedrig", low], ["zero", "Leer", zero]].forEach(function (c) {
+      chips.appendChild(h("button", { type: "button", class: "chip", "aria-pressed": String(filter === c[0]), "data-filter": c[0] }, [
+        document.createTextNode(c[1]), h("span", { class: "n", text: String(c[2]) })
+      ]));
+    });
+
+    $("#demo").hidden = !hasDemo;
+
+    var list = $("#list"), empty = $("#empty");
+    list.textContent = "";
+    var shown = sorted().filter(matches);
+    shown.forEach(function (it) {
+      var s = status(it), unit = it.einheit || "Stk";
+      var meta = [];
+      if (it.ort) meta.push(h("span", { text: it.ort }));
+      if (s === "low") meta.push(h("span", { class: "pill low", text: "Niedrig" }));
+      if (s === "zero") meta.push(h("span", { class: "pill zero", text: "Leer" }));
+      var main = h("button", { type: "button", class: "main", "data-edit": it.id, "aria-label": "Artikel bearbeiten: " + (it.name || "") }, [
+        it.nr ? h("span", { class: "nr", text: it.nr }) : null,
+        h("span", { class: "name", text: it.name || "Ohne Bezeichnung" }),
+        meta.length ? h("span", { class: "meta" }, meta) : null
+      ]);
+      var qty = h("div", { class: "qty" }, [
+        h("button", { type: "button", class: "step", "data-bump": it.id, "data-d": "-1", "aria-label": "Bestand von " + it.name + " um 1 verringern", text: "−" }),
+        h("div", { class: "count" }, [document.createTextNode(fmt.format(it.bestand)), h("small", { text: unit })]),
+        h("button", { type: "button", class: "step", "data-bump": it.id, "data-d": "1", "aria-label": "Bestand von " + it.name + " um 1 erhöhen", text: "+" })
+      ]);
+      list.appendChild(h("li", { class: "row s-" + s }, [main, qty]));
+    });
+
+    empty.textContent = "";
+    if (!items.length) {
+      empty.hidden = false;
+      empty.appendChild(h("h2", { text: "Noch keine Artikel" }));
+      empty.appendChild(h("p", { text: "Lege den ersten Artikel an, lies eine CSV-Datei ein oder sieh dir die App mit Beispielartikeln an." }));
+      empty.appendChild(h("div", { class: "btnrow" }, [
+        h("button", { type: "button", class: "btn primary", "data-act": "new", text: "Ersten Artikel anlegen" }),
+        h("button", { type: "button", class: "btn", "data-act": "demo", text: "Beispiele laden" })
+      ]));
+    } else if (!shown.length) {
+      empty.hidden = false;
+      empty.appendChild(h("p", { text: query ? "Keine Treffer für „" + query + "“." : "In dieser Ansicht ist nichts." }));
+    } else {
+      empty.hidden = true;
+    }
+
+    $("#foot-info").textContent = storageOk
+      ? "Der Bestand liegt nur auf diesem Gerät. Sichere ihn ab und zu als CSV-Datei, dann geht nichts verloren."
+      : "Dieser Browser erlaubt kein Speichern. Die Eingaben gehen beim Schließen verloren.";
+    $("#csv-out").hidden = !items.length;
+  }
+
+  /* ---------- Eingabeblatt ---------- */
+  function fillUnits(sel, value) {
+    var list = UNITS.slice();
+    if (value && list.indexOf(value) < 0) list.push(value);
+    sel.textContent = "";
+    list.forEach(function (u) {
+      var o = h("option", { value: u, text: u });
+      if (u === value) o.selected = true;
+      sel.appendChild(o);
+    });
+  }
+  function openSheet(id) {
+    editingId = id || null;
+    armed = false;
+    var it = id ? byId(id) : null;
+    $("#sheet-title").textContent = it ? "Artikel bearbeiten" : "Neuer Artikel";
+    $("#f-name").value = it ? (it.name || "") : "";
+    $("#f-nr").value = it ? (it.nr || "") : "";
+    $("#f-ort").value = it ? (it.ort || "") : "";
+    $("#f-bestand").value = it ? String(it.bestand).replace(".", ",") : "0";
+    $("#f-min").value = it ? String(it.min || 0).replace(".", ",") : "0";
+    fillUnits($("#f-einheit"), it ? it.einheit : "Stk");
+    $("#form-error").hidden = true;
+    $("#danger-row").hidden = !it;
+    $("#del").textContent = "Artikel löschen";
+    $("#del").classList.remove("armed");
+    $("#del-hint").hidden = true;
+    $("#sheet").hidden = false;
+    setTimeout(function () { $("#f-name").focus(); }, 30);
+  }
+  function closeSheet() {
+    $("#sheet").hidden = true;
+    editingId = null;
+  }
+  function formError(msg) {
+    var e = $("#form-error");
+    e.textContent = msg; e.hidden = false;
+  }
+
+  function submitForm(ev) {
+    ev.preventDefault();
+    var name = $("#f-name").value.trim();
+    var nr = $("#f-nr").value.trim();
+    var ort = $("#f-ort").value.trim();
+    var bestand = num($("#f-bestand").value);
+    var min = num($("#f-min").value);
+    if (!name) { formError("Bitte eine Bezeichnung eingeben."); $("#f-name").focus(); return; }
+    if (isNaN(bestand) || bestand < 0) { formError("Der Bestand muss eine Zahl ab 0 sein."); $("#f-bestand").focus(); return; }
+    if (isNaN(min) || min < 0) { formError("Der Meldebestand muss eine Zahl ab 0 sein."); $("#f-min").focus(); return; }
+    if (nr && items.some(function (x) { return x.id !== editingId && String(x.nr || "").toLowerCase() === nr.toLowerCase(); })) {
+      formError("Diese Artikelnummer gibt es schon."); $("#f-nr").focus(); return;
+    }
+    var rec = {
+      id: editingId || newId(),
+      name: name, nr: nr, ort: ort,
+      bestand: Math.round(bestand * 100) / 100,
+      min: Math.round(min * 100) / 100,
+      einheit: $("#f-einheit").value,
+      geaendert: Date.now()
+    };
+    var wasEdit = !!editingId;
+    if (wasEdit) {
+      items[items.findIndex(function (x) { return x.id === editingId; })] = rec;
+    } else {
+      items.push(rec);
+    }
+    saveLocal();
+    closeSheet();
+    render();
+    toast(wasEdit ? "Gespeichert." : "Artikel angelegt.");
+  }
+
+  function onDelete() {
+    if (!editingId) return;
+    if (!armed) {
+      armed = true;
+      $("#del").textContent = "Wirklich löschen";
+      $("#del").classList.add("armed");
+      $("#del-hint").hidden = false;
+      return;
+    }
+    var id = editingId;
+    items = items.filter(function (x) { return x.id !== id; });
+    saveLocal();
+    closeSheet();
+    render();
+    toast("Artikel gelöscht.");
+  }
+
+  /* ---------- Beispiele ---------- */
+  function loadDemo() {
+    DEMO.forEach(function (d) {
+      items.push(Object.assign({ id: newId(), demo: true, geaendert: Date.now() }, d));
+    });
+    saveLocal();
+    render();
+  }
+  function removeDemo() {
+    items = items.filter(function (x) { return !x.demo; });
+    saveLocal();
+    render();
+    toast("Beispiele entfernt.");
+  }
+
+  /* csv-start */
+  function csvCell(v) {
+    var s = String(v == null ? "" : v);
+    return /[";\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+  function toCsv(rows) {
+    return "﻿" + rows.map(function (r) { return r.map(csvCell).join(";"); }).join("\r\n");
+  }
+  function parseCsv(text) {
+    text = String(text).replace(/^﻿/, "");
+    var first = text.split(/\r?\n/, 1)[0] || "";
+    var sep = (first.match(/;/g) || []).length >= (first.match(/,/g) || []).length ? ";" : ",";
+    var rows = [], row = [], cell = "", q = false, i = 0, c;
+    while (i < text.length) {
+      c = text[i];
+      if (q) {
+        if (c === '"') {
+          if (text[i + 1] === '"') { cell += '"'; i++; } else { q = false; }
+        } else { cell += c; }
+      } else if (c === '"') { q = true; }
+      else if (c === sep) { row.push(cell); cell = ""; }
+      else if (c === "\n" || c === "\r") {
+        if (c === "\r" && text[i + 1] === "\n") i++;
+        row.push(cell); cell = "";
+        rows.push(row); row = [];
+      } else { cell += c; }
+      i++;
+    }
+    if (cell !== "" || row.length) { row.push(cell); rows.push(row); }
+    return rows.filter(function (r) { return r.some(function (x) { return String(x).trim() !== ""; }); });
+  }
+  function csvNumber(v) {
+    var s = String(v == null ? "" : v).trim().replace(/\s/g, "");
+    if (s.indexOf(",") >= 0) s = s.replace(/\./g, "").replace(",", ".");
+    var n = Number(s);
+    return isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : NaN;
+  }
+  function csvToRecords(rows) {
+    if (!rows.length) return [];
+    var names = {
+      nr: ["artikelnummer", "artikelnr", "nr", "nummer"],
+      name: ["bezeichnung", "artikel", "name"],
+      ort: ["lagerplatz", "ort", "platz"],
+      bestand: ["bestand", "menge"],
+      min: ["meldebestand", "mindestbestand", "min"],
+      einheit: ["einheit"]
+    };
+    var head = rows[0].map(function (x) { return String(x).trim().toLowerCase(); });
+    var idx = {}, found = 0;
+    Object.keys(names).forEach(function (k) {
+      var pos = head.findIndex(function (hd) { return names[k].indexOf(hd) >= 0; });
+      idx[k] = pos;
+      if (pos >= 0) found++;
+    });
+    var body = rows;
+    if (found >= 2) {
+      body = rows.slice(1);
+    } else {
+      idx = { nr: 0, name: 1, ort: 2, bestand: 3, min: 4, einheit: 5 };
+    }
+    var out = [];
+    body.forEach(function (r) {
+      var get = function (k) { return idx[k] >= 0 && idx[k] < r.length ? String(r[idx[k]]).trim() : ""; };
+      var name = get("name");
+      if (!name) return;
+      var b = csvNumber(get("bestand")), m = csvNumber(get("min"));
+      out.push({
+        nr: get("nr"), name: name, ort: get("ort"),
+        bestand: isNaN(b) ? 0 : b, min: isNaN(m) ? 0 : m,
+        einheit: get("einheit") || "Stk"
+      });
+    });
+    return out;
+  }
+  /* csv-end */
+
+  function exportCsv() {
+    var rows = [["Artikelnummer", "Bezeichnung", "Lagerplatz", "Bestand", "Meldebestand", "Einheit"]];
+    sorted().forEach(function (it) {
+      rows.push([it.nr, it.name, it.ort, String(it.bestand).replace(".", ","), String(it.min || 0).replace(".", ","), it.einheit]);
+    });
+    var d = new Date();
+    var stamp = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    saveFile("lagerbestand-" + stamp + ".csv", toCsv(rows), "text/csv");
+  }
+  function saveFile(name, text, type) {
+    var blob = new Blob([text], { type: type + ";charset=utf-8" });
+    var file = null;
+    try { file = new File([blob], name, { type: type }); } catch (e) {}
+    var mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (mobile && file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file], title: name }).catch(function (e) {
+        if (e && e.name === "AbortError") return;
+        toast("Die Datei konnte nicht geteilt werden.");
+      });
+      return;
+    }
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+    toast("Datei wurde gespeichert.");
+  }
+
+  function importCsv(file) {
+    if (!file) return;
+    file.arrayBuffer().then(function (buf) {
+      var text;
+      try { text = new TextDecoder("utf-8", { fatal: true }).decode(buf); }
+      catch (e) { text = new TextDecoder("windows-1252").decode(buf); }
+      var recs = csvToRecords(parseCsv(text));
+      if (!recs.length) { toast("In der Datei wurden keine Artikel gefunden."); return; }
+      var added = 0, updated = 0;
+      recs.forEach(function (r) {
+        var hit = items.find(function (x) {
+          if (r.nr && x.nr) return String(x.nr).toLowerCase() === r.nr.toLowerCase();
+          return String(x.name).toLowerCase() === r.name.toLowerCase();
+        });
+        if (hit) {
+          hit.name = r.name; hit.nr = r.nr; hit.ort = r.ort; hit.bestand = r.bestand; hit.min = r.min; hit.einheit = r.einheit;
+          hit.geaendert = Date.now();
+          delete hit.demo;
+          updated++;
+        } else {
+          items.push(Object.assign({ id: newId(), geaendert: Date.now() }, r));
+          added++;
+        }
+      });
+      saveLocal();
+      render();
+      toast(added + " neu, " + updated + " aktualisiert.");
+    }).catch(function () {
+      toast("Die Datei konnte nicht gelesen werden.");
+    });
+  }
+
+  /* ---------- Ereignisse ---------- */
+  document.addEventListener("click", function (ev) {
+    var t = ev.target.closest("button, [data-close]");
+    if (!t) return;
+    if (t.hasAttribute("data-close")) { closeSheet(); return; }
+    if (t.dataset.bump) { bump(t.dataset.bump, Number(t.dataset.d)); return; }
+    if (t.dataset.edit) { openSheet(t.dataset.edit); return; }
+    if (t.dataset.filter) { filter = t.dataset.filter; render(); return; }
+    if (t.dataset.act === "new") { openSheet(); return; }
+    if (t.dataset.act === "demo") { loadDemo(); return; }
+  });
+  $("#add").addEventListener("click", function () { openSheet(); });
+  $("#form").addEventListener("submit", submitForm);
+  $("#del").addEventListener("click", onDelete);
+  $("#demo-remove").addEventListener("click", removeDemo);
+  $("#csv-out").addEventListener("click", exportCsv);
+  $("#csv-in-btn").addEventListener("click", function () { $("#csv-in").click(); });
+  $("#csv-in").addEventListener("change", function (e) {
+    importCsv(e.target.files && e.target.files[0]);
+    e.target.value = "";
+  });
+  $("#search").addEventListener("input", function (e) { query = e.target.value.trim(); render(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !$("#sheet").hidden) closeSheet(); });
+
+  /* ---------- Start ---------- */
+  loadLocal();
+  render();
+  try {
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
+  } catch (e) {}
+  if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("sw.js").catch(function () {});
+    });
+  }
+})();
+</script>
+</body>
+</html>
